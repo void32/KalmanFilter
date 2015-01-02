@@ -37,7 +37,7 @@ class Kalman1D:
         self.P = (I-k_gain*self.H)*self.P #update covariance with evidence for time t when we
 
 
-def ComputeVolt(mean, stdDeviation, N):
+def ComputeValue(mean, stdDeviation, N):
         retList = []
         for meassure in range(N):
             retList.append(random.normalvariate(mean, stdDeviation))
@@ -46,7 +46,7 @@ def ComputeVolt(mean, stdDeviation, N):
 #Example
 value = 1.25
 noise = 0.25 
-noOfMeasurements = 3000
+noOfMeasurements = 200
 initialState = 2.5
 
 #State transiition matrix - previously state to the current state
@@ -68,11 +68,8 @@ kalman1d = Kalman1D(A,B,H,stateBegin, initP)
 #Create noisy measure values
 pltMeassure = []
 pltKalman = []
-meassured = ComputeVolt(value, noise, noOfMeasurements);
-i = 0
+meassured = ComputeValue(value, noise, noOfMeasurements);
 for measure in meassured:
-    i = i+1.0
-    measure = measure + 3 * numpy.sin(i* numpy.pi/300)
     pltMeassure.append(measure)
     pltKalman.append(kalman1d.x[0,0])
     kalman1d.Prediction(0)
