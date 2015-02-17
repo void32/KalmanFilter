@@ -14,13 +14,13 @@ class Kalman1D:
         self.Q = numpy.matrix([0.00001]) #Noise when updating the covariance matrix 
         self.R = numpy.matrix([0.1]) #Covariance of the sensor noise
 
-    #Calculate state vector for next time step
+    #Calculate state vector and covariance for next time step given previous state and current control input
     def Prediction(self, u):
         #u: Control-input
         self.x = self.A*self.x + self.B*u #Prediction of the mean state at time t
         self.P = self.A*self.P*numpy.transpose(self.A)+self.Q #Prediction of the covarince at time t - how certain are we that x is close to the actual state
 
-    #Update with sensor data and minimize the variance P
+    #Update with sensor data and minimize the variance for the current state estimate P
     def Update(self, z): 
         #z: observation/evidence - the sensor input
         est_z = self.H*self.x #estimated observation given the model and evidence up to t-1        
