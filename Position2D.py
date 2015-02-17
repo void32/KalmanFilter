@@ -18,9 +18,6 @@ class Robot:
     #The steering kinematics:
     # linear/acceleration   floating point value
     # angular              floating point value
-
-    #GPSdevice simulator
-    gps = GPSsim();
         
     def __init__(self, initialPosition, initialOrientation):
         self.__setPosition(initialPosition) 
@@ -42,6 +39,12 @@ class Robot:
  
     def getPosition(self):
         return self.__position
+
+    #GPSdevice simulator
+    def getGPSSimPosition(self):
+        mean = self.getPosition()
+        cov = [[100,0],[0,100]]
+        return np.random.multivariate_normal(mean,cov)
 
     #Drawing drone
     def setupDrawing(self, figure):
@@ -80,16 +83,43 @@ robot.setupDrawing(figure)
 #Initial acceleration 
 angular= 0
 linear = 0
-def UpdateDrone():
+def updateDrone():
     global angular,linear
     robot.kinematicsUpdate(linear, angular)
     figure.canvas.draw()
     angular= 0.0
     linear = 0.0 #constant speed/no acceleration
 
-timer = figure.canvas.new_timer(interval=20)
-timer.add_callback(UpdateDrone)
-timer.start()
+droneTimer = figure.canvas.new_timer(interval=100)
+droneTimer.add_callback(updateDrone)
+droneTimer.start()
+
+gpsSimPositionsX = []
+gpsSimPositionsY = []
+gpsSimTrail = figure.gca().plot(gpsSimPositionsX,gpsSimPositionsY,"x--")
+def updateSimulatedGPSPosition():
+    gpsSimPos = robot.getGPSSimPosition();  
+    gpsSimPositionsX.append(gpsSimPos[0])
+    gpsSimPositionsY.append(gpsSimPos[1])
+    gpsSimTrail[0].set_xdata(gpsSimPositionsX)
+    gpsSimTrail[0].set_ydata(gpsSimPositionsY)
+    figure.canvas.draw()
+
+actualPositionsX = []
+actualPositionsY = []
+actualTrail = figure.gca().plot(actualPositionsX,actualPositionsY,"o-")
+def updateActualPosition():
+    pos = robot.getPosition();  
+    actualPositionsX.append(pos[0])
+    actualPositionsY.append(pos[1])
+    actualTrail[0].set_xdata(actualPositionsX)
+    actualTrail[0].set_ydata(actualPositionsY)
+    figure.canvas.draw()
+
+droneTimer = figure.canvas.new_timer(interval=1000)
+droneTimer.add_callback(updateSimulatedGPSPosition)
+droneTimer.add_callback(updateActualPosition)
+droneTimer.start()
 
 #State for user picking logic 
 movable = None
