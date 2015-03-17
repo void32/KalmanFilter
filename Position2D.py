@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-import KalmanFilter
+from KalmanFilter import KalmanFilter
 
 class Robot:
     __handleRadius = 3
@@ -77,7 +77,7 @@ figure.gca().set_aspect('equal')
 
 
 #make the drone
-robot = Robot(np.array([ 0, 0]), 0)
+robot = Robot(np.array([0, 0]), 0)
 robot.setupDrawing(figure)
 
 #Initial acceleration 
@@ -94,20 +94,42 @@ droneTimer = figure.canvas.new_timer(interval=100)
 droneTimer.add_callback(updateDrone)
 droneTimer.start()
 
-gpsSimPositionsX = []
-gpsSimPositionsY = []
-gpsSimTrail = figure.gca().plot(gpsSimPositionsX,gpsSimPositionsY,"x--")
-def updateSimulatedGPSPosition():
-    gpsSimPos = robot.getGPSSimPosition();  
-    gpsSimPositionsX.append(gpsSimPos[0])
-    gpsSimPositionsY.append(gpsSimPos[1])
-    gpsSimTrail[0].set_xdata(gpsSimPositionsX)
-    gpsSimTrail[0].set_ydata(gpsSimPositionsY)
-    figure.canvas.draw()
+# Filter for GPS position
+class Position2DFilter():
+    __kalmanFilter = None    
+
+    #ini_x - initial state
+    #iniP - initial covariance to be in this state
+    def __init__(self, ini_x, initP):
+        #State transiition matrix - previously state to the current state
+        A = np.matrix([[1.0, 0.0],[0.0, 1.0]])
+
+        #Control vector - Maps control input to state change
+        B = np.matrix([1.0, 1.0])
+
+        #Observer - maps state to meassure
+        H = np.matrix([[1.0, 0.0],[0.0, 1.0]])
+
+        #The noise covariance matrices - describe the statistics of the noises
+        Q = np.matrix([[0.00001, 0.0],[0.0, 0.00001]]) # Covariance of the (transition) process noise 
+        R = np.matrix([[0.001, 0.0],[0.0, 0.0001]]) # Covariance of the (sensor) observation noise       
+
+        #Construct the Kalman Filter
+        self.__kalmanFilter = KalmanFilter(A,B,H,ini_x, initP, Q, R)      
+
+    #Add GPS event position to the filter
+    def AddObservedPosition(self, obsPosition):
+        self.__kalmanFilter.Update(obsPosition)
+
+    def getPosition(self):
+        return self.__kalmanFilter.x.getA1()
+
+#make the kalman filter
+posFilter = Position2DFilter(robot.getGPSSimPosition(), np.matrix([[1, 0], [0, 1]]));
 
 actualPositionsX = []
 actualPositionsY = []
-actualTrail = figure.gca().plot(actualPositionsX,actualPositionsY,"o-")
+actualTrail = figure.gca().plot(actualPositionsX,actualPositionsY,".-")
 def updateActualPosition():
     pos = robot.getPosition();  
     actualPositionsX.append(pos[0])
@@ -116,9 +138,36 @@ def updateActualPosition():
     actualTrail[0].set_ydata(actualPositionsY)
     figure.canvas.draw()
 
+gpsSimPositionsX = []
+gpsSimPositionsY = []
+gpsSimTrail = figure.gca().plot(gpsSimPositionsX,gpsSimPositionsY,"x--")
+def updateSimulatedGPSPosition():
+    gpsSimPos = robot.getGPSSimPosition(); 
+    
+    posFilter.AddObservedPosition(gpsSimPos);
+ 
+    gpsSimPositionsX.append(gpsSimPos[0])
+    gpsSimPositionsY.append(gpsSimPos[1])
+    gpsSimTrail[0].set_xdata(gpsSimPositionsX)
+    gpsSimTrail[0].set_ydata(gpsSimPositionsY)
+    figure.canvas.draw()
+
+filterGpsSimPositionsX = []
+filterGpsSimPositionsY = []
+filterGpsSimTrail = figure.gca().plot(filterGpsSimPositionsX,filterGpsSimPositionsY,"o-")
+def updateFilterGPSPosition():
+    # Use Kalman filter
+    filterGpsSimPos = posFilter.getPosition();
+    filterGpsSimPositionsX.append(filterGpsSimPos[0])
+    filterGpsSimPositionsY.append(filterGpsSimPos[1])
+    filterGpsSimTrail[0].set_xdata(filterGpsSimPositionsX)
+    filterGpsSimTrail[0].set_ydata(filterGpsSimPositionsY)
+    figure.canvas.draw()
+
 droneTimer = figure.canvas.new_timer(interval=1000)
-droneTimer.add_callback(updateSimulatedGPSPosition)
 droneTimer.add_callback(updateActualPosition)
+droneTimer.add_callback(updateSimulatedGPSPosition)
+droneTimer.add_callback(updateFilterGPSPosition)
 droneTimer.start()
 
 #State for user picking logic 
@@ -126,14 +175,7 @@ movable = None
 index = None #spline path controle point index
 
 def on_pick(event):
-    global movable,index,controller, robot
-    index = path.selectControlPoint(event.artist)
-    if index is not None:
-        movable = path
-    else:
-        movable = robot
-        robot.__rotation=0
-        controller = Controller(robot, path)
+    pass
 
 def motion_notify_event(event):
     global figure
