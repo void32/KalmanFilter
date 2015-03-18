@@ -12,7 +12,7 @@ class Robot:
     #The static kinematics:
     # __position        2D vector    
     # __orientation     floating point value
-    # __velocity        floating point value
+    # __speed        floating point value
     # __rotation        floating point value
 
     #The steering kinematics:
@@ -22,11 +22,11 @@ class Robot:
     def __init__(self, initialPosition, initialOrientation):
         self.__setPosition(initialPosition) 
         self.__orientation = initialOrientation 
-        self.__velocity = 0.0
+        self.__speed = 0.0
         self.__rotation = 0.0
 
     def __str__(self):
-        return "drone: pos="+str(self.__position)+" ori="+str(self.__orientation)+" vel="+str(self.__velocity)+" rot="+str(self.__rotation)
+        return "drone: pos="+str(self.__position)+" ori="+str(self.__orientation)+" vel="+str(self.__speed)+" rot="+str(self.__rotation)
 
     def __setPosition(self, newPosition):
         self.__position = newPosition
@@ -40,15 +40,25 @@ class Robot:
     def getPosition(self):
         return self.__position
 
+    def getVelocity(self):
+        return np.matrix([[self.__speed*np.cos(self.__orientation)], 
+                          [self.__speed*np.sin(self.__orientation)]])
+
     #GPSdevice simulator
     def getGPSSimPosition(self):
-        mean = self.getPosition()
-        cov = [[100,0],[0,100]]
+        mean = self.getPosition().getA1()
+        cov = [[0.1,0],[0,0.100]]
         return np.random.multivariate_normal(mean,cov)
+
+    def getGPSSimVelocity(self):
+        mean = self.getVelocity().getA1()
+        cov = [[0.1,0],[0,0.1]]
+        return np.random.multivariate_normal(mean,cov)
+
 
     #Drawing drone
     def setupDrawing(self, figure):
-        centerX, centerY = self.__position[0],self.__position[1]
+        centerX, centerY = self.__position[0,0],self.__position[1,0]
         self.__circle = plt.Circle((centerX,centerY), self.__handleRadius,fc=np.random.random(3),picker=True, alpha=0.5)
         figure.gca().add_patch(self.__circle)
         xList = [centerX,centerX+np.cos(self.__orientation)*self.__lineLenght]
@@ -63,11 +73,11 @@ class Robot:
 
     def kinematicsUpdate(self, linear, angular): 
         #update position and orientation
-        self.__setPosition(self.__position +  self.__velocity * np.array([np.cos(self.__orientation), np.sin(self.__orientation)]))
+        self.__setPosition(self.__position + self.__speed * np.matrix([[np.cos(self.__orientation)], [np.sin(self.__orientation)]]))
         self.__orientation += self.__rotation
 
         #update steering: velocity and rotation 
-        self.__velocity += linear
+        self.__speed += linear
         self.__rotation = np.max(np.min(angular, np.pi*0.01),-np.pi*0.01)
 
 #Plot
@@ -77,7 +87,8 @@ figure.gca().set_aspect('equal')
 
 
 #make the drone
-robot = Robot(np.array([0, 0]), 0)
+robot = Robot(np.matrix([[0],
+                         [0]]), 0)
 robot.setupDrawing(figure)
 
 #Initial acceleration 
@@ -95,37 +106,76 @@ droneTimer.add_callback(updateDrone)
 droneTimer.start()
 
 # Filter for GPS position
+#State:
+#   position X
+#   position Y
+#   Speed X / change in position X
+#   Speed Y / change in position Y
 class Position2DFilter():
     __kalmanFilter = None    
 
     #ini_x - initial state
     #iniP - initial covariance to be in this state
-    def __init__(self, ini_x, initP):
+    def __init__(self, init_x, initP):
         #State transiition matrix - previously state to the current state
-        A = np.matrix([[1.0, 0.0],[0.0, 1.0]])
+        A = np.matrix([[1.0, 0.0, 1.0, 0.0],
+                       [0.0, 1.0, 0.0, 1.0],
+                       [0.0, 0.0, 1.0, 0.0],
+                       [0.0, 0.0, 0.0, 1.0]])
 
         #Control vector - Maps control input to state change
-        B = np.matrix([1.0, 1.0])
+        B = np.matrix([[0.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 1.0, 0.0],
+                       [0.0, 0.0, 0.0, 1.0]]) # posX posY velX velY
 
         #Observer - maps state to meassure
-        H = np.matrix([[1.0, 0.0],[0.0, 1.0]])
+        H = np.matrix([[1.0, 0.0, 0.0, 0.0],
+                       [0.0, 1.0, 0.0, 0.0],
+                       [0.0, 0.0, 1.0, 0.0],
+                       [0.0, 0.0, 0.0, 1.0]])
 
-        #The noise covariance matrices - describe the statistics of the noises
-        Q = np.matrix([[0.00001, 0.0],[0.0, 0.00001]]) # Covariance of the (transition) process noise 
-        R = np.matrix([[0.001, 0.0],[0.0, 0.0001]]) # Covariance of the (sensor) observation noise       
+        ##The noise covariance matrices - describe the statistics of the noise##
+
+        # Covariance matrix of the (transition) process noise
+        Q = np.matrix([[0.00, 0.0, 0.0, 0.0],
+                       [0.0, 0.00, 0.0, 0.0],
+                       [0.0, 0.0, 0.00, 0.0],
+                       [0.0, 0.0, 0.0, 0.00]]) 
+ 
+        # Covariance matrix of the (sensor) observation noise
+        R = np.matrix([[1.0, 0.0, 0.0, 0.0],
+                       [0.0, 1.0, 0.0, 0.0],
+                       [0.0, 0.0, 1.0, 0.0],
+                       [0.0, 0.0, 0.0, 1.0]])        
 
         #Construct the Kalman Filter
-        self.__kalmanFilter = KalmanFilter(A,B,H,ini_x, initP, Q, R)      
+        self.__kalmanFilter = KalmanFilter(A,B,H,init_x, initP, Q, R)      
 
     #Add GPS event position to the filter
-    def AddObservedPosition(self, obsPosition):
-        self.__kalmanFilter.Update(obsPosition)
+    def AddObservedPosition(self, obsState):
+        self.__kalmanFilter.Prediction(np.matrix([[0.0], 
+                                                  [0.0],
+                                                  [obsState[2]], 
+                                                  [obsState[3]]
+                                                 ]))
+        self.__kalmanFilter.Update(obsState)
 
     def getPosition(self):
         return self.__kalmanFilter.x.getA1()
 
 #make the kalman filter
-posFilter = Position2DFilter(robot.getGPSSimPosition(), np.matrix([[1, 0], [0, 1]]));
+robotPos = robot.getGPSSimPosition()
+initialState = np.matrix([[robotPos[0]], 
+                          [robotPos[1]],
+                          [0.0],
+                          [0.0]]) #assume the root to start with no speed
+
+initialCov = np.matrix([[1, 0, 0, 0], 
+                        [0, 1, 0, 0],
+                        [0, 0, 1, 0],
+                        [0, 0, 0, 1]])
+posFilter = Position2DFilter(initialState,initialCov);
 
 actualPositionsX = []
 actualPositionsY = []
@@ -143,9 +193,14 @@ gpsSimPositionsY = []
 gpsSimTrail = figure.gca().plot(gpsSimPositionsX,gpsSimPositionsY,"x--")
 def updateSimulatedGPSPosition():
     gpsSimPos = robot.getGPSSimPosition(); 
-    
-    posFilter.AddObservedPosition(gpsSimPos);
- 
+    gpsSimVel = robot.getGPSSimVelocity();
+    observedState = np.matrix([[gpsSimPos[0]],
+                               [gpsSimPos[1]],
+                               [gpsSimVel[0]],
+                               [gpsSimVel[1]]]);
+
+    posFilter.AddObservedPosition(observedState);
+
     gpsSimPositionsX.append(gpsSimPos[0])
     gpsSimPositionsY.append(gpsSimPos[1])
     gpsSimTrail[0].set_xdata(gpsSimPositionsX)
@@ -180,7 +235,8 @@ def on_pick(event):
 def motion_notify_event(event):
     global figure
     if movable is not None:
-        movable.pickedUpAndMoved(np.array([event.xdata, event.ydata]), index)
+        movable.pickedUpAndMoved(np.matrix([[event.xdata], 
+                                            [event.ydata]]), index)
     figure.canvas.draw()
 
 def button_press_event(event):
@@ -195,16 +251,16 @@ def key_press_callback(event):
     global angular,linear
     if event.key=='up':
         linear += 0.33
-        print "^"
+        #print "^"
     elif event.key=='down':
         linear -= 0.33
-        print "V"
+        #print "V"
     elif event.key=='left':
         angular += 0.15*np.pi
-        print "<"
+        #print "<"
     elif event.key=='right':
         angular -= 0.15*np.pi
-        print ">"
+        #print ">"
     elif event.key=='escape':
         exit()
         
