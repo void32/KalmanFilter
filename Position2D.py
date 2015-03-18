@@ -53,8 +53,8 @@ class Robot:
 
     def getGPSSimVelocity(self):
         mean = self.getVelocity().getA1()
-        cov = [[0.001, 0],
-               [   0, 0.001]]
+        cov = [[0.001, 0.0],
+               [0.0  , 0.001]]
         return np.random.multivariate_normal(mean,cov)
 
 
