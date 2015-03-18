@@ -53,8 +53,8 @@ class Robot:
 
     def getGPSSimVelocity(self):
         mean = self.getVelocity().getA1()
-        cov = [[0.01, 0],
-               [   0, 0.01]]
+        cov = [[0.001, 0],
+               [   0, 0.001]]
         return np.random.multivariate_normal(mean,cov)
 
 
@@ -148,8 +148,8 @@ class Position2DFilter():
         # Covariance matrix of the (sensor) observation noise
         R = np.matrix([[100.0, 0.0, 0.0, 0.0],
                        [0.0, 100.0, 0.0, 0.0],
-                       [0.0, 0.0, 0.001, 0.0],
-                       [0.0, 0.0, 0.0, 0.001]])        
+                       [0.0, 0.0, 0.01, 0.0],
+                       [0.0, 0.0, 0.0, 0.01]])        
 
         #Construct the Kalman Filter
         self.__kalmanFilter = KalmanFilter(A,B,H,init_x, initP, Q, R)      
@@ -163,8 +163,11 @@ class Position2DFilter():
                                                  ]))
         self.__kalmanFilter.Update(obsState)
 
-    def getState(self):
-        return self.__kalmanFilter.x
+    def getState(self): 
+        return self.__kalmanFilter.x #mean vector
+
+    def getCovariance(self):
+        return self.__kalmanFilter.P #Covariance matri
 
 #make the kalman filter
 robotPos = robot.getGPSSimPosition()
@@ -173,10 +176,10 @@ initialState = np.matrix([[robotPos[0]],
                           [0.0],
                           [0.0]]) #assume the root to start with no speed
 
-initialCov = np.matrix([[1, 0, 0, 0], 
-                        [0, 1, 0, 0],
-                        [0, 0, 1, 0],
-                        [0, 0, 0, 1]])
+initialCov = np.matrix([[1000, 0, 0, 0], 
+                        [0, 1000, 0, 0],
+                        [0, 0, 1000, 0],
+                        [0, 0, 0, 1000]])
 posFilter = Position2DFilter(initialState,initialCov);
 
 actualPositionsX = []
@@ -221,7 +224,14 @@ def updateFilterGPSPosition():
     filterGpsSimTrail[0].set_ydata(filterGpsSimPositionsY)
     figure.canvas.draw()
     
+    np.set_printoptions(precision=5,suppress=True)
+    print("real world state:")
+    print(robot.getPosition())
+    print(robot.getVelocity())
+    print
+    print("Model state:")
     print(posFilter.getState())
+    print(posFilter.getCovariance())
 
 droneTimer = figure.canvas.new_timer(interval=1)
 droneTimer.add_callback(updateActualPosition)
@@ -255,16 +265,16 @@ def key_press_callback(event):
     global angular,linear
     if event.key=='up':
         linear += 0.33
-        #print "^"
+        print "^"
     elif event.key=='down':
         linear -= 0.33
-        #print "V"
+        print "V"
     elif event.key=='left':
         angular += 0.15*np.pi
-        #print "<"
+        print "<"
     elif event.key=='right':
         angular -= 0.15*np.pi
-        #print ">"
+        print ">"
     elif event.key=='escape':
         exit()
         
