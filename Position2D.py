@@ -47,12 +47,14 @@ class Robot:
     #GPSdevice simulator
     def getGPSSimPosition(self):
         mean = self.getPosition().getA1()
-        cov = [[0.1,0],[0,0.100]]
+        cov = [[100,  0],
+               [  0,100]]
         return np.random.multivariate_normal(mean,cov)
 
     def getGPSSimVelocity(self):
         mean = self.getVelocity().getA1()
-        cov = [[0.1,0],[0,0.1]]
+        cov = [[0.01, 0],
+               [   0, 0.01]]
         return np.random.multivariate_normal(mean,cov)
 
 
@@ -127,10 +129,10 @@ class Position2DFilter():
         B = np.matrix([[0.0, 0.0, 0.0, 0.0],
                        [0.0, 0.0, 0.0, 0.0],
                        [0.0, 0.0, 1.0, 0.0],
-                       [0.0, 0.0, 0.0, 1.0]]) # posX posY velX velY
+                       [0.0, 0.0, 0.0, 1.0]])
 
         #Observer - maps state to meassure
-        H = np.matrix([[1.0, 0.0, 0.0, 0.0],
+        H = np.matrix([[1.0, 0.0, 0.0, 0.0],  
                        [0.0, 1.0, 0.0, 0.0],
                        [0.0, 0.0, 1.0, 0.0],
                        [0.0, 0.0, 0.0, 1.0]])
@@ -138,16 +140,16 @@ class Position2DFilter():
         ##The noise covariance matrices - describe the statistics of the noise##
 
         # Covariance matrix of the (transition) process noise
-        Q = np.matrix([[0.00, 0.0, 0.0, 0.0],
-                       [0.0, 0.00, 0.0, 0.0],
-                       [0.0, 0.0, 0.00, 0.0],
-                       [0.0, 0.0, 0.0, 0.00]]) 
+        Q = np.matrix([[0.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.0, 0.0]]) 
  
         # Covariance matrix of the (sensor) observation noise
-        R = np.matrix([[1.0, 0.0, 0.0, 0.0],
-                       [0.0, 1.0, 0.0, 0.0],
-                       [0.0, 0.0, 1.0, 0.0],
-                       [0.0, 0.0, 0.0, 1.0]])        
+        R = np.matrix([[100.0, 0.0, 0.0, 0.0],
+                       [0.0, 100.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.001, 0.0],
+                       [0.0, 0.0, 0.0, 0.001]])        
 
         #Construct the Kalman Filter
         self.__kalmanFilter = KalmanFilter(A,B,H,init_x, initP, Q, R)      
@@ -156,13 +158,13 @@ class Position2DFilter():
     def AddObservedPosition(self, obsState):
         self.__kalmanFilter.Prediction(np.matrix([[0.0], 
                                                   [0.0],
-                                                  [obsState[2]], 
-                                                  [obsState[3]]
+                                                  [0.0], 
+                                                  [0.0]
                                                  ]))
         self.__kalmanFilter.Update(obsState)
 
-    def getPosition(self):
-        return self.__kalmanFilter.x.getA1()
+    def getState(self):
+        return self.__kalmanFilter.x
 
 #make the kalman filter
 robotPos = robot.getGPSSimPosition()
@@ -212,14 +214,16 @@ filterGpsSimPositionsY = []
 filterGpsSimTrail = figure.gca().plot(filterGpsSimPositionsX,filterGpsSimPositionsY,"o-")
 def updateFilterGPSPosition():
     # Use Kalman filter
-    filterGpsSimPos = posFilter.getPosition();
+    filterGpsSimPos = [posFilter.getState()[0,0], posFilter.getState()[1,0]]
     filterGpsSimPositionsX.append(filterGpsSimPos[0])
     filterGpsSimPositionsY.append(filterGpsSimPos[1])
     filterGpsSimTrail[0].set_xdata(filterGpsSimPositionsX)
     filterGpsSimTrail[0].set_ydata(filterGpsSimPositionsY)
     figure.canvas.draw()
+    
+    print(posFilter.getState())
 
-droneTimer = figure.canvas.new_timer(interval=1000)
+droneTimer = figure.canvas.new_timer(interval=1)
 droneTimer.add_callback(updateActualPosition)
 droneTimer.add_callback(updateSimulatedGPSPosition)
 droneTimer.add_callback(updateFilterGPSPosition)
