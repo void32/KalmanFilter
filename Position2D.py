@@ -103,6 +103,8 @@ def updateDrone():
     angular= 0.0
     linear = 0.0 #constant speed/no acceleration
 
+    #update model.. with acceleration in direction
+
 droneTimer = figure.canvas.new_timer(interval=100)
 droneTimer.add_callback(updateDrone)
 droneTimer.start()
@@ -119,33 +121,35 @@ class Position2DFilter():
     #ini_x - initial state
     #iniP - initial covariance to be in this state
     def __init__(self, init_x, initP):
+        deltaTime = 1.0
+
         #State transiition matrix - previously state to the current state
-        A = np.matrix([[1.0, 0.0, 1.0, 0.0],
-                       [0.0, 1.0, 0.0, 1.0],
+        A = np.matrix([[1.0, 0.0, deltaTime, 0.0],
+                       [0.0, 1.0, 0.0, deltaTime],
                        [0.0, 0.0, 1.0, 0.0],
                        [0.0, 0.0, 0.0, 1.0]])
 
         #Control vector - Maps control input to state change
-        B = np.matrix([[0.0, 0.0, 0.0, 0.0],
-                       [0.0, 0.0, 0.0, 0.0],
-                       [0.0, 0.0, 1.0, 0.0],
-                       [0.0, 0.0, 0.0, 1.0]])
+        B = np.matrix([[0.5*deltaTime**2, 0.0, 0.0, 0.0],
+                       [0.0, 0.5*deltaTime**2, 0.0, 0.0],
+                       [0.0, 0.0, deltaTime, 0.0],
+                       [0.0, 0.0, 0.0, deltaTime]])
 
         #Observer - maps state to meassure
         H = np.matrix([[1.0, 0.0, 0.0, 0.0],  
                        [0.0, 1.0, 0.0, 0.0],
-                       [0.0, 0.0, 1.0, 0.0],
-                       [0.0, 0.0, 0.0, 1.0]])
+                       [0.0, 0.0, 0.0, 0.0],
+                       [0.0, 0.0, 0.0, 0.0]])
 
         ##The noise covariance matrices - describe the statistics of the noise##
 
         # Covariance matrix of the (transition) process noise
-        Q = np.matrix([[0.0, 0.0, 0.0, 0.0],
-                       [0.0, 0.0, 0.0, 0.0],
-                       [0.0, 0.0, 0.0, 0.0],
-                       [0.0, 0.0, 0.0, 0.0]]) 
+        Q = np.matrix([[(0.5*deltaTime**2)**2, 0.0, (0.5*deltaTime**2)*deltaTime, 0.0],
+                       [0.0, (0.5*deltaTime**2)**2, 0.0, (0.5*deltaTime**2)*deltaTime],
+                       [(0.5*deltaTime**2)*deltaTime, 0.0, deltaTime*deltaTime, 0.0],
+                       [0.0, (0.5*deltaTime**2)*deltaTime, 0.0, deltaTime*deltaTime]]) 
  
-        # Covariance matrix of the (sensor) observation noise
+        # Covariance matrix of the (sensor) observation noise / measurement Error
         R = np.matrix([[100.0, 0.0, 0.0, 0.0],
                        [0.0, 100.0, 0.0, 0.0],
                        [0.0, 0.0, 0.01, 0.0],
@@ -156,10 +160,11 @@ class Position2DFilter():
 
     #Add GPS event position to the filter
     def AddObservedPosition(self, obsState):
-        self.__kalmanFilter.Prediction(np.matrix([[0.0], 
-                                                  [0.0],
-                                                  [0.0], 
-                                                  [0.0]
+        accel = 0.0 # from input to robot
+        self.__kalmanFilter.Prediction(accel*np.matrix([[1.0], 
+                                                  [1.0],
+                                                  [1.0], 
+                                                  [1.0]
                                                  ]))
         self.__kalmanFilter.Update(obsState)
 
